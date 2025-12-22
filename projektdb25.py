@@ -1,64 +1,25 @@
-import streamlit as st
-from supabase import create_client, Client
-
-# Połączenie z bazą
+# 1. Zmień "Kategoria" na "kategoria"
 try:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    supabase: Client = create_client(url, key)
-except Exception as e:
-    st.error(f"Problem z Secrets: {e}")
-    st.stop()
-
-st.title("📦 Mój Magazyn WMS")
-
-# 1. Pobieranie kategorii
-try:
-    res_cat = supabase.table("Kategoria").select("*").execute()
+    res_cat = supabase.table("kategoria").select("*").execute()
     kategorie = res_cat.data
 except Exception as e:
     st.error(f"Błąd przy pobieraniu kategorii: {e}")
     kategorie = []
 
-# 2. Formularz dodawania
-st.subheader("Dodaj nowy produkt")
-if kategorie:
-    with st.form("dodaj_produkt"):
-        nazwa = st.text_input("Nazwa produktu")
-        ilosc = st.number_input("Ilość", min_value=0, step=1)
-        cena = st.number_input("Cena", min_value=0.0)
-        
-        opcje_kat = {k['Nazwa']: k['id'] for k in kategorie}
-        wybrana_kat = st.selectbox("Wybierz kategorię", options=list(opcje_kat.keys()))
-        
-        if st.form_submit_button("Dodaj do magazynu"):
-            dane = {
-                "Nazwa": nazwa,
-                "Liczba": ilosc,
-                "Cena": cena,
-                "Kategoria_id": opcje_kat[wybrana_kat]
-            }
-            supabase.table("Produkty").insert(dane).execute()
-            st.success("Dodano produkt!")
-            st.rerun()
-else:
-    st.warning("Najpierw dodaj kategorie w Supabase!")
+# ... wewnątrz formularza dodawania, zmień "Produkty" na "produkty"
+# ORAZ upewnij się, że nazwy kolumn są takie jak w bazie (prawdopodobnie małe litery)
+if st.form_submit_button("Dodaj do magazynu"):
+    dane = {
+        "nazwa": nazwa,        # sprawdź czy w Supabase masz 'Nazwa' czy 'nazwa'
+        "liczba": ilosc,       # sprawdź czy 'Liczba' czy 'liczba'
+        "cena": cena,          # sprawdź czy 'Cena' czy 'cena'
+        "kategoria_id": opcje_kat[wybrana_kat]
+    }
+    supabase.table("produkty").insert(dane).execute()
+    st.success("Dodano produkt!")
+    st.rerun()
 
-# 3. Wyświetlanie produktów
-st.subheader("Lista produktów w magazynie")
+# 3. Zmień "Produkty" na "produkty"
 try:
-    res_prod = supabase.table("Produkty").select("*").execute()
+    res_prod = supabase.table("produkty").select("*").execute()
     produkty = res_prod.data
-    
-    if produkty:
-        for p in produkty:
-            col1, col2, col3 = st.columns([3, 2, 1])
-            col1.write(f"**{p['Nazwa']}**")
-            col2.write(f"Ilość: {p['Liczba']} | Cena: {p['Cena']} zł")
-            if col3.button("Usuń", key=f"del_{p['id']}"):
-                supabase.table("Produkty").delete().eq("id", p['id']).execute()
-                st.rerun()
-    else:
-        st.info("Magazyn jest pusty.")
-except Exception as e:
-    st.error(f"Błąd przy pobieraniu produktów: {e}")
