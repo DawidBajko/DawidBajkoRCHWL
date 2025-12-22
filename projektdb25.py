@@ -12,7 +12,7 @@ except Exception as e:
 
 st.title("📦 Mój Magazyn WMS")
 
-# 1. Pobieranie kategorii (małe litery nazwa tabeli)
+# 1. Pobieranie kategorii
 try:
     res_cat = supabase.table("kategoria").select("*").execute()
     kategorie = res_cat.data
@@ -26,9 +26,8 @@ if kategorie:
     with st.form("form_dodawania"):
         nazwa_input = st.text_input("Nazwa produktu")
         ilosc_input = st.number_input("Ilość", min_value=0, step=1)
-        cena_input = st.number_input("Cena", min_value=0.0)
+        cena_input = st.number_input("Cena jednostkowa", min_value=0.0)
         
-        # POPRAWKA: używamy małego 'nazwa', bo tak masz w tabeli kategoria
         opcje_kat = {k['nazwa']: k['id'] for k in kategorie}
         wybrana_kat = st.selectbox("Wybierz kategorię", options=list(opcje_kat.keys()))
         
@@ -36,7 +35,6 @@ if kategorie:
         
         if submit:
             try:
-                # POPRAWKA: wszystkie klucze z małej litery zgodnie ze zdjęciem z Supabase
                 nowy_produkt = {
                     "nazwa": nazwa_input,
                     "liczba": ilosc_input,
@@ -51,24 +49,44 @@ if kategorie:
 else:
     st.warning("Dodaj najpierw kategorie w Supabase!")
 
-# 3. Wyświetlanie produktów
+# 3. Wyświetlanie produktów i obliczenia
 st.subheader("Lista produktów w magazynie")
 try:
-    # Pobieramy produkty i łączymy z kategorią, żeby wyświetlić jej nazwę
     res_prod = supabase.table("produkty").select("*, kategoria(nazwa)").execute()
     produkty = res_prod.data
     
     if produkty:
+        suma_calkowita = 0.0  # Zmienna do przechowywania sumy całego magazynu
+        
         for p in produkty:
-            col1, col2, col3 = st.columns([3, 2, 1])
+            # Obliczenia dla konkretnego wiersza
+            ilosc = p['liczba'] if p['liczba'] else 0
+            cena = float(p['cena']) if p['cena'] else 0.0
+            wartosc_pozycji = ilosc * cena
+            suma_calkowita += wartosc_pozycji
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
             nazwa_kat = p['kategoria']['nazwa'] if p.get('kategoria') else "Brak"
             
-            col1.write(f"**{p['nazwa']}** ({nazwa_kat})")
-            col2.write(f"Ilość: {p['liczba']} | Cena: {p['cena']} zł")
-            
-            if col3.button("Usuń", key=f"del_{p['id']}"):
-                supabase.table("produkty").delete().eq("id", p['id']).execute()
-                st.rerun()
+            with col1:
+                st.write(f"**{p['nazwa']}**")
+                st.caption(f"Kat: {nazwa_kat}")
+            with col2:
+                st.write(f"{ilosc} szt. x {cena:.2f} zł")
+            with col3:
+                st.write(f"**Wartość: {wartosc_pozycji:.2f} zł**")
+            with col4:
+                if st.button("Usuń", key=f"del_{p['id']}"):
+                    supabase.table("produkty").delete().eq("id", p['id']).execute()
+                    st.rerun()
+            st.divider()
+        
+        # Wyświetlenie sumy końcowej
+        st.write("---")
+        c1, c2 = st.columns([5, 2])
+        c1.subheader("ŁĄCZNA WARTOŚĆ MAGAZYNU:")
+        c2.subheader(f"{suma_calkowita:,.2f} zł")
+        
     else:
         st.info("Magazyn jest pusty.")
 except Exception as e:
