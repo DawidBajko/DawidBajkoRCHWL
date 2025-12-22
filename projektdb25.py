@@ -10,7 +10,9 @@ except Exception as e:
     st.error(f"Problem z Secrets: {e}")
     st.stop()
 
+# NAGŁÓWEK Z AUTOREM
 st.title("📦 Mój Magazyn WMS")
+st.write("autor: Dawid Bajko") # Dodany podpis autora małymi literami
 
 # 1. Pobieranie kategorii
 try:
@@ -56,11 +58,11 @@ try:
     produkty = res_prod.data
     
     if produkty:
-        suma_calkowita = 0.0  # Zmienna do przechowywania sumy całego magazynu
+        suma_calkowita = 0.0
         
         for p in produkty:
-            # Obliczenia dla konkretnego wiersza
             ilosc = p['liczba'] if p['liczba'] else 0
+            # Konwersja na float w razie gdyby baza zwróciła Decimal
             cena = float(p['cena']) if p['cena'] else 0.0
             wartosc_pozycji = ilosc * cena
             suma_calkowita += wartosc_pozycji
