@@ -11,8 +11,8 @@ except Exception as e:
     st.stop()
 
 # NAGŁÓWEK Z AUTOREM
-st.title("📦 Mój Magazyn WMS")
-st.write("autor: Dawid Bajko") # Dodany podpis autora małymi literami
+st.title("📦 Magazyn WMS 📦")
+st.write("Autor: Dawid Bajko") # Dodany podpis autora małymi literami
 
 # 1. Pobieranie kategorii
 try:
