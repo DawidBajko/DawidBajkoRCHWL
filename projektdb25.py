@@ -13,58 +13,60 @@ except Exception as e:
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Magazyn WMS", layout="wide")
-st.title("📦 Inteligentny Magazyn WMS 📦")
+st.title("📦 Magazyn WMS 📦")
 st.write("Autor: **Dawid Bajko**")
 
 # 1. Pobieranie danych
-@st.cache_data(ttl=10) # Odświeżanie co 10 sekund dla wydajności
 def load_data():
-    res_cat = supabase.table("kategoria").select("*").execute()
-    res_prod = supabase.table("produkty").select("*, kategoria(nazwa)").execute()
-    return res_cat.data, res_prod.data
+    try:
+        res_cat = supabase.table("kategoria").select("*").execute()
+        res_prod = supabase.table("produkty").select("*, kategoria(nazwa)").execute()
+        return res_cat.data, res_prod.data
+    except:
+        return [], []
 
 kategorie_data, produkty_data = load_data()
 
-# --- PANEL BOCZNY (STATYSTYKI I DODAWANIE) ---
+# --- PANEL BOCZNY (DODAWANIE I STATYSTYKI) ---
 with st.sidebar:
-    st.header("➕ Zarządzanie")
+    st.header("➕ Nowy Produkt")
+    if kategorie_data:
+        with st.form("form_dodawania"):
+            nazwa_input = st.text_input("Nazwa")
+            ilosc_input = st.number_input("Ilość", min_value=0, step=1)
+            cena_input = st.number_input("Cena (zł)", min_value=0.0)
+            opcje_kat = {k['nazwa']: k['id'] for k in kategorie_data}
+            wybrana_kat = st.selectbox("Kategoria", options=list(opcje_kat.keys()))
+            
+            if st.form_submit_button("Dodaj do bazy"):
+                nowy = {
+                    "nazwa": nazwa_input, 
+                    "liczba": ilosc_input, 
+                    "cena": cena_input, 
+                    "kategoria_id": opcje_kat[wybrana_kat]
+                }
+                supabase.table("produkty").insert(nowy).execute()
+                st.success("Dodano!")
+                st.rerun()
     
-    # Formularz dodawania
-    with st.expander("Dodaj nowy produkt", expanded=False):
-        if kategorie_data:
-            with st.form("form_dodawania"):
-                nazwa_input = st.text_input("Nazwa")
-                ilosc_input = st.number_input("Ilość", min_value=0, step=1)
-                cena_input = st.number_input("Cena (zł)", min_value=0.0)
-                opcje_kat = {k['nazwa']: k['id'] for k in kategorie_data}
-                wybrana_kat = st.selectbox("Kategoria", options=list(opcje_kat.keys()))
-                
-                if st.form_submit_button("Zapisz w bazie"):
-                    nowy = {"nazwa": nazwa_input, "liczba": ilosc_input, "cena": cena_input, "kategoria_id": opcje_kat[wybrana_kat]}
-                    supabase.table("produkty").insert(nowy).execute()
-                    st.success("Dodano!")
-                    st.rerun()
-        else:
-            st.warning("Najpierw dodaj kategorie w Supabase!")
-
-    # Statystyki w panelu bocznym
     st.divider()
-    st.header("📊 Statystyki")
+    st.header("📊 Podsumowanie")
     if produkty_data:
         df = pd.DataFrame(produkty_data)
         total_val = (df['liczba'] * df['cena'].astype(float)).sum()
-        st.metric("Wartość całkowita", f"{total_val:,.2f} zł")
-        st.metric("Liczba indeksów", len(df))
+        st.metric("Wartość magazynu", f"{total_val:,.2f} zł")
+        st.metric("Liczba produktów", len(df))
 
-# --- GŁÓWNA SEKCJA: FILTROWANIE ---
-st.subheader("🔍 Przeglądaj zasoby")
+# --- WYSZUKIWARKA I FILTRY ---
+st.subheader("🔍 Wyszukiwarka")
 col_search1, col_search2 = st.columns([2, 1])
 
 with col_search1:
-    search_query = st.text_input("Szukaj po nazwie produktu...", placeholder="Wpisz nazwę...")
+    search_query = st.text_input("Szukaj po nazwie...", placeholder="Wpisz nazwę produktu")
 
 with col_search2:
-    filter_kat = st.multiselect("Filtruj kategoria", options=[k['nazwa'] for k in kategorie_data])
+    naukowe_nazwy_kat = [k['nazwa'] for k in kategorie_data]
+    filter_kat = st.multiselect("Filtruj wg kategorii", options=naukowe_nazwy_kat)
 
 # --- LOGIKA FILTROWANIA ---
 filtered_products = produkty_data
@@ -73,13 +75,7 @@ if search_query:
 if filter_kat:
     filtered_products = [p for p in filtered_products if p['kategoria'] and p['kategoria']['nazwa'] in filter_kat]
 
-# --- WIZUALIZACJA (WYKRES) ---
-if filtered_products:
-    with st.expander("📈 Analiza graficzna", expanded=False):
-        chart_data = pd.DataFrame([{"Produkt": p['nazwa'], "Wartość": p['liczba'] * float(p['cena'])} for p in filtered_products])
-        st.bar_chart(chart_data.set_index("Produkt"))
-
-# --- LISTA PRODUKTÓW Z EDYCJĄ ---
+# --- LISTA PRODUKTÓW ---
 st.divider()
 if filtered_products:
     for p in filtered_products:
@@ -88,27 +84,28 @@ if filtered_products:
             
             cena = float(p['cena'])
             wartosc = p['liczba'] * cena
+            nazwa_kat = p['kategoria']['nazwa'] if p['kategoria'] else "Brak"
             
             c1.write(f"**{p['nazwa']}**")
-            c1.caption(f"Kat: {p['kategoria']['nazwa'] if p['kategoria'] else 'Brak'}")
+            c1.caption(f"Kategoria: {nazwa_kat}")
             
-            # Szybka zmiana ilości (+ / -)
+            # Szybka zmiana ilości
             c2.write(f"Ilość: **{p['liczba']}**")
-            sub_c1, sub_c2 = c2.columns(2)
-            if sub_c1.button("➕", key=f"add_{p['id']}"):
+            b1, b2 = c2.columns(2)
+            if b1.button("➕", key=f"plus_{p['id']}"):
                 supabase.table("produkty").update({"liczba": p['liczba'] + 1}).eq("id", p['id']).execute()
                 st.rerun()
-            if sub_c2.button("➖", key=f"sub_{p['id']}"):
+            if b2.button("➖", key=f"minus_{p['id']}"):
                 if p['liczba'] > 0:
                     supabase.table("produkty").update({"liczba": p['liczba'] - 1}).eq("id", p['id']).execute()
                     st.rerun()
 
             c3.write(f"Cena: {cena:.2f} zł")
-            c4.write(f"Suma: **{wartosc:.2f} zł**")
+            c4.write(f"Wartość: **{wartosc:.2f} zł**")
             
             if c5.button("🗑️", key=f"del_{p['id']}"):
                 supabase.table("produkty").delete().eq("id", p['id']).execute()
                 st.rerun()
             st.divider()
 else:
-    st.info("Nie znaleziono produktów spełniających kryteria.")
+    st.info("Brak produktów do wyświetlenia.")
