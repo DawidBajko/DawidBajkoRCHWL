@@ -1,111 +1,147 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
+import plotly.express as px # Dodaj do requirements.txt
 
-# Połączenie z bazą
-try:
+# --- KONFIGURACJA ---
+st.set_page_config(page_title="Magazyn WMS Pro", layout="wide", page_icon="📦")
+
+# Połączenie z bazą (zoptymalizowane cache'owanie)
+@st.cache_resource
+def get_supabase_client():
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
-    supabase: Client = create_client(url, key)
-except Exception as e:
-    st.error(f"Problem z Secrets: {e}")
-    st.stop()
+    return create_client(url, key)
 
-# --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Magazyn WMS", layout="wide")
-st.title("📦 Magazyn WMS 📦")
-st.write("Autor: **Dawid Bajko**")
+supabase = get_supabase_client()
 
-# 1. Pobieranie danych
+# --- LOGIKA DANYCH ---
 def load_data():
     try:
         res_cat = supabase.table("kategoria").select("*").execute()
+        # Join w Supabase działa przez select z relacją
         res_prod = supabase.table("produkty").select("*, kategoria(nazwa)").execute()
         return res_cat.data, res_prod.data
-    except:
+    except Exception as e:
+        st.error(f"Błąd bazy danych: {e}")
         return [], []
 
 kategorie_data, produkty_data = load_data()
+df = pd.DataFrame(produkty_data)
 
-# --- PANEL BOCZNY (DODAWANIE I STATYSTYKI) ---
+# Przetwarzanie DF dla łatwiejszej pracy
+if not df.empty:
+    df['kat_nazwa'] = df['kategoria'].apply(lambda x: x['nazwa'] if x else "Brak")
+    df['cena'] = df['cena'].astype(float)
+    df['wartosc_total'] = df['liczba'] * df['cena']
+
+# --- PANEL BOCZNY ---
 with st.sidebar:
-    st.header("➕ Nowy Produkt")
-    if kategorie_data:
-        with st.form("form_dodawania"):
-            nazwa_input = st.text_input("Nazwa")
-            ilosc_input = st.number_input("Ilość", min_value=0, step=1)
-            cena_input = st.number_input("Cena (zł)", min_value=0.0)
-            opcje_kat = {k['nazwa']: k['id'] for k in kategorie_data}
-            wybrana_kat = st.selectbox("Kategoria", options=list(opcje_kat.keys()))
-            
-            if st.form_submit_button("Dodaj do bazy"):
-                nowy = {
-                    "nazwa": nazwa_input, 
-                    "liczba": ilosc_input, 
-                    "cena": cena_input, 
-                    "kategoria_id": opcje_kat[wybrana_kat]
-                }
-                supabase.table("produkty").insert(nowy).execute()
-                st.success("Dodano!")
-                st.rerun()
-    
-    st.divider()
-    st.header("📊 Podsumowanie")
-    if produkty_data:
-        df = pd.DataFrame(produkty_data)
-        total_val = (df['liczba'] * df['cena'].astype(float)).sum()
-        st.metric("Wartość magazynu", f"{total_val:,.2f} zł")
-        st.metric("Liczba produktów", len(df))
-
-# --- WYSZUKIWARKA I FILTRY ---
-st.subheader("🔍 Wyszukiwarka")
-col_search1, col_search2 = st.columns([2, 1])
-
-with col_search1:
-    search_query = st.text_input("Szukaj po nazwie...", placeholder="Wpisz nazwę produktu")
-
-with col_search2:
-    naukowe_nazwy_kat = [k['nazwa'] for k in kategorie_data]
-    filter_kat = st.multiselect("Filtruj wg kategorii", options=naukowe_nazwy_kat)
-
-# --- LOGIKA FILTROWANIA ---
-filtered_products = produkty_data
-if search_query:
-    filtered_products = [p for p in filtered_products if search_query.lower() in p['nazwa'].lower()]
-if filter_kat:
-    filtered_products = [p for p in filtered_products if p['kategoria'] and p['kategoria']['nazwa'] in filter_kat]
-
-# --- LISTA PRODUKTÓW ---
-st.divider()
-if filtered_products:
-    for p in filtered_products:
-        with st.container():
-            c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 1])
-            
-            cena = float(p['cena'])
-            wartosc = p['liczba'] * cena
-            nazwa_kat = p['kategoria']['nazwa'] if p['kategoria'] else "Brak"
-            
-            c1.write(f"**{p['nazwa']}**")
-            c1.caption(f"Kategoria: {nazwa_kat}")
-            
-            # Szybka zmiana ilości
-            c2.write(f"Ilość: **{p['liczba']}**")
-            b1, b2 = c2.columns(2)
-            if b1.button("➕", key=f"plus_{p['id']}"):
-                supabase.table("produkty").update({"liczba": p['liczba'] + 1}).eq("id", p['id']).execute()
-                st.rerun()
-            if b2.button("➖", key=f"minus_{p['id']}"):
-                if p['liczba'] > 0:
-                    supabase.table("produkty").update({"liczba": p['liczba'] - 1}).eq("id", p['id']).execute()
+    st.header("➕ Zarządzanie")
+    with st.expander("Dodaj nowy produkt", expanded=False):
+        if kategorie_data:
+            with st.form("form_dodawania", clear_on_submit=True):
+                nazwa_input = st.text_input("Nazwa produktu")
+                ilosc_input = st.number_input("Ilość", min_value=0, step=1)
+                cena_input = st.number_input("Cena (zł)", min_value=0.0, format="%.2f")
+                
+                opcje_kat = {k['nazwa']: k['id'] for k in kategorie_data}
+                wybrana_kat = st.selectbox("Kategoria", options=list(opcje_kat.keys()))
+                
+                if st.form_submit_button("🚀 Dodaj do bazy"):
+                    nowy = {
+                        "nazwa": nazwa_input, 
+                        "liczba": ilosc_input, 
+                        "cena": cena_input, 
+                        "kategoria_id": opcje_kat[wybrana_kat]
+                    }
+                    supabase.table("produkty").insert(nowy).execute()
+                    st.success("Dodano produkt!")
                     st.rerun()
 
-            c3.write(f"Cena: {cena:.2f} zł")
-            c4.write(f"Wartość: **{wartosc:.2f} zł**")
+    st.divider()
+    
+    # Przycisk eksportu
+    if not df.empty:
+        st.subheader("💾 Eksport danych")
+        csv = df[['nazwa', 'kat_nazwa', 'liczba', 'cena', 'wartosc_total']].to_csv(index=False).encode('utf-8')
+        st.download_button("Pobierz CSV", data=csv, file_name="magazyn.csv", mime="text/csv")
+
+# --- GŁÓWNY PANEL: STATYSTYKI ---
+st.title("📦 Inteligentny Magazyn WMS")
+
+if not df.empty:
+    m1, m2, m3 = st.columns(3)
+    total_val = df['wartosc_total'].sum()
+    low_stock_count = df[df['liczba'] < 5].shape[0]
+    
+    m1.metric("Całkowita wartość", f"{total_val:,.2f} zł")
+    m2.metric("Liczba pozycji", len(df))
+    m3.metric("Niskie stany (<5)", low_stock_count, delta_color="inverse", delta=-low_stock_count)
+
+    # Wizualizacja Plotly
+    fig = px.pie(df, values='wartosc_total', names='kat_nazwa', hole=0.4,
+                 title="Udział kategorii w wartości magazynu",
+                 color_discrete_sequence=px.colors.sequential.RdBu)
+    fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20))
+    st.plotly_chart(fig, use_container_width=True)
+
+# --- WYSZUKIWARKA I FILTRY ---
+st.divider()
+c_search, c_filter = st.columns([2, 1])
+search_q = c_search.text_input("🔍 Szukaj produktu...", placeholder="Np. Śruba, Młotek...")
+selected_cats = c_filter.multiselect("📂 Kategorie", options=df['kat_nazwa'].unique() if not df.empty else [])
+
+# Filtrowanie DF
+filtered_df = df.copy()
+if search_q:
+    filtered_df = filtered_df[filtered_df['nazwa'].str.contains(search_q, case=False)]
+if selected_cats:
+    filtered_df = filtered_df[filtered_df['kat_nazwa'].isin(selected_cats)]
+
+# --- LISTA PRODUKTÓW (UI CARDS) ---
+if not filtered_df.empty:
+    # Nagłówki "tabeli"
+    h1, h2, h3, h4, h5 = st.columns([3, 2, 2, 2, 1])
+    h1.caption("PRODUKT / KATEGORIA")
+    h2.caption("STAN MAGAZYNOWY")
+    h3.caption("CENA JEDN.")
+    h4.caption("WARTOŚĆ")
+    h5.caption("AKCJA")
+
+    for _, row in filtered_df.iterrows():
+        with st.container():
+            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
             
-            if c5.button("🗑️", key=f"del_{p['id']}"):
-                supabase.table("produkty").delete().eq("id", p['id']).execute()
+            # Kolumna 1: Nazwa i Kategoria
+            col1.markdown(f"**{row['nazwa']}**")
+            col1.caption(f"📁 {row['kat_nazwa']}")
+            
+            # Kolumna 2: Ilość z alertem
+            if row['liczba'] < 5:
+                col2.markdown(f"⚠️ :red[{row['liczba']} szt.]")
+            else:
+                col2.markdown(f"**{row['liczba']}** szt.")
+            
+            # Szybkie przyciski +/-
+            b_plus, b_minus = col2.columns(2)
+            if b_plus.button("➕", key=f"p_{row['id']}", use_container_width=True):
+                supabase.table("produkty").update({"liczba": row['liczba'] + 1}).eq("id", row['id']).execute()
                 st.rerun()
+            if b_minus.button("➖", key=f"m_{row['id']}", use_container_width=True):
+                if row['liczba'] > 0:
+                    supabase.table("produkty").update({"liczba": row['liczba'] - 1}).eq("id", row['id']).execute()
+                    st.rerun()
+
+            # Kolumna 3 i 4
+            col3.write(f"{row['cena']:.2f} zł")
+            col4.write(f"**{row['wartosc_total']:.2f} zł**")
+            
+            # Kolumna 5: Usuwanie
+            if col5.button("🗑️", key=f"del_{row['id']}", use_container_width=True):
+                supabase.table("produkty").delete().eq("id", row['id']).execute()
+                st.rerun()
+            
             st.divider()
 else:
-    st.info("Brak produktów do wyświetlenia.")
+    st.info("Nie znaleziono produktów spełniających kryteria.")
