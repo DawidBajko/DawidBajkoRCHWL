@@ -1,7 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
-import plotly.express as px # Dodaj do requirements.txt
+import plotly.express as px
 
 # --- KONFIGURACJA ---
 st.set_page_config(page_title="Magazyn WMS Pro", layout="wide", page_icon="📦")
@@ -19,7 +19,6 @@ supabase = get_supabase_client()
 def load_data():
     try:
         res_cat = supabase.table("kategoria").select("*").execute()
-        # Join w Supabase działa przez select z relacją
         res_prod = supabase.table("produkty").select("*, kategoria(nazwa)").execute()
         return res_cat.data, res_prod.data
     except Exception as e:
@@ -59,14 +58,6 @@ with st.sidebar:
                     st.success("Dodano produkt!")
                     st.rerun()
 
-    st.divider()
-    
-    # Przycisk eksportu
-    if not df.empty:
-        st.subheader("💾 Eksport danych")
-        csv = df[['nazwa', 'kat_nazwa', 'liczba', 'cena', 'wartosc_total']].to_csv(index=False).encode('utf-8')
-        st.download_button("Pobierz CSV", data=csv, file_name="magazyn.csv", mime="text/csv")
-
 # --- GŁÓWNY PANEL: STATYSTYKI ---
 st.title("📦 Inteligentny Magazyn WMS")
 
@@ -101,7 +92,6 @@ if selected_cats:
 
 # --- LISTA PRODUKTÓW (UI CARDS) ---
 if not filtered_df.empty:
-    # Nagłówki "tabeli"
     h1, h2, h3, h4, h5 = st.columns([3, 2, 2, 2, 1])
     h1.caption("PRODUKT / KATEGORIA")
     h2.caption("STAN MAGAZYNOWY")
@@ -113,35 +103,8 @@ if not filtered_df.empty:
         with st.container():
             col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
             
-            # Kolumna 1: Nazwa i Kategoria
             col1.markdown(f"**{row['nazwa']}**")
             col1.caption(f"📁 {row['kat_nazwa']}")
             
-            # Kolumna 2: Ilość z alertem
             if row['liczba'] < 5:
-                col2.markdown(f"⚠️ :red[{row['liczba']} szt.]")
-            else:
-                col2.markdown(f"**{row['liczba']}** szt.")
-            
-            # Szybkie przyciski +/-
-            b_plus, b_minus = col2.columns(2)
-            if b_plus.button("➕", key=f"p_{row['id']}", use_container_width=True):
-                supabase.table("produkty").update({"liczba": row['liczba'] + 1}).eq("id", row['id']).execute()
-                st.rerun()
-            if b_minus.button("➖", key=f"m_{row['id']}", use_container_width=True):
-                if row['liczba'] > 0:
-                    supabase.table("produkty").update({"liczba": row['liczba'] - 1}).eq("id", row['id']).execute()
-                    st.rerun()
-
-            # Kolumna 3 i 4
-            col3.write(f"{row['cena']:.2f} zł")
-            col4.write(f"**{row['wartosc_total']:.2f} zł**")
-            
-            # Kolumna 5: Usuwanie
-            if col5.button("🗑️", key=f"del_{row['id']}", use_container_width=True):
-                supabase.table("produkty").delete().eq("id", row['id']).execute()
-                st.rerun()
-            
-            st.divider()
-else:
-    st.info("Nie znaleziono produktów spełniających kryteria.")
+                col2.markdown(f"⚠️ :red[{
