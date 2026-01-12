@@ -74,37 +74,4 @@ if not df.empty:
     fig = px.pie(df, values='wartosc_total', names='kat_nazwa', hole=0.4,
                  title="Udział kategorii w wartości magazynu",
                  color_discrete_sequence=px.colors.sequential.RdBu)
-    fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20))
-    st.plotly_chart(fig, use_container_width=True)
-
-# --- WYSZUKIWARKA I FILTRY ---
-st.divider()
-c_search, c_filter = st.columns([2, 1])
-search_q = c_search.text_input("🔍 Szukaj produktu...", placeholder="Np. Śruba, Młotek...")
-selected_cats = c_filter.multiselect("📂 Kategorie", options=df['kat_nazwa'].unique() if not df.empty else [])
-
-# Filtrowanie DF
-filtered_df = df.copy()
-if search_q:
-    filtered_df = filtered_df[filtered_df['nazwa'].str.contains(search_q, case=False)]
-if selected_cats:
-    filtered_df = filtered_df[filtered_df['kat_nazwa'].isin(selected_cats)]
-
-# --- LISTA PRODUKTÓW (UI CARDS) ---
-if not filtered_df.empty:
-    h1, h2, h3, h4, h5 = st.columns([3, 2, 2, 2, 1])
-    h1.caption("PRODUKT / KATEGORIA")
-    h2.caption("STAN MAGAZYNOWY")
-    h3.caption("CENA JEDN.")
-    h4.caption("WARTOŚĆ")
-    h5.caption("AKCJA")
-
-    for _, row in filtered_df.iterrows():
-        with st.container():
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
-            
-            col1.markdown(f"**{row['nazwa']}**")
-            col1.caption(f"📁 {row['kat_nazwa']}")
-            
-            if row['liczba'] < 5:
-                col2.markdown(f"⚠️ :red[{
+    fig.update_layout(height=350, margin=dict(l=20
